@@ -1,0 +1,284 @@
+{
+  "nbformat": 4,
+  "nbformat_minor": 0,
+  "metadata": {
+    "colab": {
+      "provenance": [],
+      "authorship_tag": "ABX9TyOu1v3WhUaGT2EbKsHQu1kC",
+      "include_colab_link": true
+    },
+    "kernelspec": {
+      "name": "python3",
+      "display_name": "Python 3"
+    },
+    "language_info": {
+      "name": "python"
+    }
+  },
+  "cells": [
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "view-in-github",
+        "colab_type": "text"
+      },
+      "source": [
+        "<a href=\"https://colab.research.google.com/github/yukti468/task/blob/main/MovieRecommenderipynb\" target=\"_parent\"><img src=\"https://colab.research.google.com/assets/colab-badge.svg\" alt=\"Open In Colab\"/></a>"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "import zipfile\n",
+        "import pandas as pd\n",
+        "import ast\n",
+        "import difflib\n",
+        "from sklearn.feature_extraction.text import TfidfVectorizer\n",
+        "from sklearn.metrics.pairwise import cosine_similarity"
+      ],
+      "metadata": {
+        "id": "nSB51-M-Y2QW"
+      },
+      "execution_count": 11,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "with zipfile.ZipFile(\"/content/archive.zip\", 'r') as zip_ref:\n",
+        "    zip_ref.extractall(\"/content/\")"
+      ],
+      "metadata": {
+        "id": "mWVmJDplZEVV"
+      },
+      "execution_count": 12,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "movies = pd.read_csv(\"/content/tmdb_5000_movies.csv\")\n",
+        "credits = pd.read_csv(\"/content/tmdb_5000_credits.csv\")"
+      ],
+      "metadata": {
+        "id": "DB6EnnEPZLkt"
+      },
+      "execution_count": 13,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "movies = movies.merge(credits, left_on='id', right_on='movie_id')\n",
+        "\n",
+        "def get_names(text, key='name', top=3):\n",
+        "    try:\n",
+        "        return ' '.join([i[key].replace(\" \", \"\") for i in ast.literal_eval(text)[:top]])\n",
+        "    except:\n",
+        "        return ''"
+      ],
+      "metadata": {
+        "id": "d-Cy1UZfajSu"
+      },
+      "execution_count": 14,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "source": [],
+      "metadata": {
+        "id": "0h8cR29LbZbM"
+      }
+    },
+    {
+      "cell_type": "markdown",
+      "source": [],
+      "metadata": {
+        "id": "qaqyo9lFbZqq"
+      }
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "movies['cast'] = movies['cast'].apply(lambda x: get_names(x, 'name', 3))\n",
+        "movies['crew'] = movies['crew'].apply(lambda x: next((i['name'] for i in ast.literal_eval(x) if i['job'] == 'Director'), ''))\n",
+        "movies['genres'] = movies['genres'].apply(lambda x: get_names(x))\n",
+        "movies['keywords'] = movies['keywords'].apply(lambda x: get_names(x))"
+      ],
+      "metadata": {
+        "id": "EKHoqM4Ban33"
+      },
+      "execution_count": 15,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "# Combined features\n",
+        "movies['combined_features'] = (\n",
+        "    movies['genres'] + ' ' +\n",
+        "    movies['keywords'] + ' ' +\n",
+        "    movies['tagline'].fillna('') + ' ' +\n",
+        "    movies['cast'] + ' ' +\n",
+        "    movies['crew']\n",
+        ")"
+      ],
+      "metadata": {
+        "id": "PiAkTYYUap3z"
+      },
+      "execution_count": 16,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "tfidf = TfidfVectorizer(stop_words='english')\n",
+        "tfidf_matrix = tfidf.fit_transform(movies['combined_features'])"
+      ],
+      "metadata": {
+        "id": "fznrW6EkauEj"
+      },
+      "execution_count": 17,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "cosine_sim = cosine_similarity(tfidf_matrix)\n",
+        "movie_titles = movies['title_x'].tolist()\n",
+        "movie_titles_lower = [title.lower() for title in movie_titles]"
+      ],
+      "metadata": {
+        "id": "toGrNViwaxUO"
+      },
+      "execution_count": 18,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "\n",
+        "C = movies['vote_average'].mean()\n",
+        "m = movies['vote_count'].quantile(0.75)"
+      ],
+      "metadata": {
+        "id": "0CnzxB86azdP"
+      },
+      "execution_count": 19,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "def weighted_rating(x, m=m, C=C):\n",
+        "    v = x['vote_count']\n",
+        "    R = x['vote_average']\n",
+        "    return (v / (v + m)) * R + (m / (m + v)) * C"
+      ],
+      "metadata": {
+        "id": "b-o9gxNIa2E2"
+      },
+      "execution_count": 20,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "movies['weighted_score'] = movies.apply(weighted_rating, axis=1)"
+      ],
+      "metadata": {
+        "id": "ON_Kx2Daa4t6"
+      },
+      "execution_count": 21,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "def recommend_movie(input_movie):\n",
+        "    input_movie_lower = input_movie.lower()\n",
+        "    close_match = difflib.get_close_matches(input_movie_lower, movie_titles_lower, n=1)\n",
+        "\n",
+        "    if not close_match:\n",
+        "        print(f\"❌ No match found for '{input_movie}'. Please try again.\")\n",
+        "        return\n",
+        "\n",
+        "    matched_index = movie_titles_lower.index(close_match[0])\n",
+        "    matched_title = movie_titles[matched_index]\n",
+        "    index = movies[movies.title_x == matched_title].index[0]\n",
+        "\n",
+        "    similarity_scores = list(enumerate(cosine_sim[index]))\n",
+        "    sorted_scores = sorted(similarity_scores, key=lambda x: x[1], reverse=True)[1:50]  # Top 50 to filter by score\n",
+        "\n",
+        "    top_25 = sorted(\n",
+        "        sorted_scores,\n",
+        "        key=lambda x: movies.iloc[x[0]]['weighted_score'],\n",
+        "        reverse=True\n",
+        "    )[:25]\n",
+        "\n",
+        "    print(f\"\\n🎬 Because you watched '{matched_title}', you might like:\\n\")\n",
+        "    for i, (idx, _) in enumerate(top_25, 1):\n",
+        "        title = movies.iloc[idx]['title_x']\n",
+        "        score = round(movies.iloc[idx]['weighted_score'], 2)\n",
+        "        print(f\"{i}. {title} (Score: {score})\")"
+      ],
+      "metadata": {
+        "id": "gvZnXm9abAMn"
+      },
+      "execution_count": 26,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "movie_input = input(\"Enter a movie you like: \")\n",
+        "recommend_movie(movie_input)"
+      ],
+      "metadata": {
+        "colab": {
+          "base_uri": "https://localhost:8080/"
+        },
+        "id": "uUjwSnq3bSTo",
+        "outputId": "fd624ce1-d8b8-4135-a25b-5a922b46a6b7"
+      },
+      "execution_count": 27,
+      "outputs": [
+        {
+          "output_type": "stream",
+          "name": "stdout",
+          "text": [
+            "Enter a movie you like: 500 days of summer\n",
+            "\n",
+            "🎬 Because you watched '(500) Days of Summer', you might like:\n",
+            "\n",
+            "1. Inception (Score: 8.0)\n",
+            "2. 10 Things I Hate About You (Score: 6.93)\n",
+            "3. The Equalizer (Score: 6.9)\n",
+            "4. If I Stay (Score: 6.88)\n",
+            "5. Treasure Planet (Score: 6.72)\n",
+            "6. 50/50 (Score: 6.67)\n",
+            "7. Stranger Than Fiction (Score: 6.59)\n",
+            "8. The Walk (Score: 6.58)\n",
+            "9. Looper (Score: 6.53)\n",
+            "10. High Fidelity (Score: 6.51)\n",
+            "11. The Amazing Spider-Man (Score: 6.46)\n",
+            "12. The Amazing Spider-Man 2 (Score: 6.44)\n",
+            "13. Bridesmaids (Score: 6.37)\n",
+            "14. The Young Victoria (Score: 6.37)\n",
+            "15. Beginners (Score: 6.32)\n",
+            "16. Hesher (Score: 6.23)\n",
+            "17. Knocked Up (Score: 6.16)\n",
+            "18. Practical Magic (Score: 6.16)\n",
+            "19. Premium Rush (Score: 6.15)\n",
+            "20. Road House (Score: 6.15)\n",
+            "21. Music and Lyrics (Score: 6.14)\n",
+            "22. The End of the Affair (Score: 6.13)\n",
+            "23. I Heart Huckabees (Score: 6.12)\n",
+            "24. Winter Passing (Score: 6.11)\n",
+            "25. Eulogy (Score: 6.11)\n"
+          ]
+        }
+      ]
+    }
+  ]
+}
